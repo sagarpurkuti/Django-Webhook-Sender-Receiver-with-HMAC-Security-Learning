@@ -28,7 +28,9 @@ def send_webhook(request):
     payload = {
         "id": str(event.event_id),
         "type": event.event_type,
+        "version": "v1",
         "created_at": event.created_at.isoformat(),
+        "source": "webhook-lab-sender",
         "data": event.payload,
     }
 
@@ -37,8 +39,10 @@ def send_webhook(request):
     )
 
     headers = {
+        "Content-Type": "application/json",
         "X-Webhook-ID": str(event.event_id),
         "X-Webhook-Event": event.event_type,
+        "X-Webhook-Version": "v1",
     }
 
     delivery = WebhookDelivery.objects.create(
