@@ -1,9 +1,35 @@
+import uuid
+
 from django.db import models
 
 
+class WebhookEvent(models.Model):
+    event_id = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+    )
+
+    event_type = models.CharField(
+        max_length=255,
+    )
+
+    payload = models.JSONField()
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    def __str__(self):
+        return f"{self.event_id} - {self.event_type}"
+
+
 class WebhookDelivery(models.Model):
-    event_id = models.CharField(max_length=255)
-    event_type = models.CharField(max_length=255)
+    event = models.ForeignKey(
+        WebhookEvent,
+        on_delete=models.CASCADE,
+        related_name="deliveries",
+    )
 
     destination_url = models.URLField()
 
@@ -48,4 +74,4 @@ class WebhookDelivery(models.Model):
     )
 
     def __str__(self):
-        return f"{self.event_id} - {self.event_type}"
+        return f"{self.event.event_id} - {self.event.event_type}"

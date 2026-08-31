@@ -47,8 +47,8 @@ def receive_webhook(request):
             status=400,
         )
 
-    event_id = payload.get("event_id")
-    event_type = payload.get("event_type")
+    event_id = payload.get("id")
+    event_type = payload.get("type")
 
     if not event_id:
         return JsonResponse(
