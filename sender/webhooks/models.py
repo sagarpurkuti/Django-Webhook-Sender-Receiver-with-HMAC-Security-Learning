@@ -39,6 +39,20 @@ class WebhookDelivery(models.Model):
         default=dict,
     )
 
+    attempt_number = models.PositiveIntegerField(
+        default=1,
+    )
+
+    status = models.CharField(
+        max_length=50,
+        default="pending",
+    )
+
+    next_retry_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
     sent_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -74,4 +88,4 @@ class WebhookDelivery(models.Model):
     )
 
     def __str__(self):
-        return f"{self.event.event_id} - {self.event.event_type}"
+        return f"{self.event.event_id} - attempt {self.attempt_number}"

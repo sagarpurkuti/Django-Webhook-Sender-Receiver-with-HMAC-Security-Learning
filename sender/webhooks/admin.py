@@ -31,14 +31,18 @@ class WebhookEventAdmin(admin.ModelAdmin):
 class WebhookDeliveryAdmin(admin.ModelAdmin):
     list_display = (
         "event",
+        "attempt_number",
+        "status",
         "response_status",
         "success",
         "duration_ms",
         "sent_at",
         "completed_at",
+        "next_retry_at",
     )
 
     list_filter = (
+        "status",
         "success",
         "response_status",
     )

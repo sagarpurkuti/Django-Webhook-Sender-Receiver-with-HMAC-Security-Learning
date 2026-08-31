@@ -1,6 +1,7 @@
 import json
 import uuid
 
+from django.db import IntegrityError
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -300,27 +301,75 @@ def receive_webhook(request):
     print("PASSED")
 
     # -------------------------------------------------
-    # 13. Save event
+    # 13. Idempotency check
     # -------------------------------------------------
 
-    event = WebhookEvent.objects.create(
-        event_id=str(event_id),
-        event_type=event_type,
-        payload=payload,
-        status="received",
-    )
+    existing_event = WebhookEvent.objects.filter(
+        event_id=str(event_id)
+    ).first()
+
+    if existing_event:
+        print()
+        print("Duplicate webhook detected:")
+        print(event_id)
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": "Webhook already processed.",
+                "duplicate": True,
+                "event": {
+                    "id": str(existing_event.event_id),
+                    "type": existing_event.event_type,
+                },
+            },
+            status=200,
+        )
+
+    # -------------------------------------------------
+    # 14. Save event
+    # -------------------------------------------------
+
+    try:
+        event = WebhookEvent.objects.create(
+            event_id=str(event_id),
+            event_type=event_type,
+            payload=payload,
+            status="received",
+        )
+
+    except IntegrityError:
+        existing_event = WebhookEvent.objects.get(
+            event_id=str(event_id)
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": "Webhook already processed.",
+                "duplicate": True,
+                "event": {
+                    "id": str(existing_event.event_id),
+                    "type": existing_event.event_type,
+                },
+            },
+            status=200,
+        )
 
     print()
     print("Event saved:")
     print(event.id)
 
     # -------------------------------------------------
-    # 14. Process event
+    # 15. Process event
     # -------------------------------------------------
 
     print()
     print("Processing event:")
     print(event_type)
+
+    event.status = "processing"
+    event.save(update_fields=["status"])
 
     event.status = "processed"
     event.processed_at = timezone.now()

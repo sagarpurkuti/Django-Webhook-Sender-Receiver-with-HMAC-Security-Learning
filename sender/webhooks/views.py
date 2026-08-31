@@ -1,11 +1,7 @@
-import time
-
-import requests
-
 from django.http import JsonResponse
-from django.utils import timezone
 
 from .models import WebhookDelivery, WebhookEvent
+from .services import deliver_webhook
 
 
 def send_webhook(request):
@@ -50,7 +46,6 @@ def send_webhook(request):
         destination_url=receiver_url,
         payload=payload,
         request_headers=headers,
-        sent_at=timezone.now(),
     )
 
     print()
@@ -79,69 +74,63 @@ def send_webhook(request):
 
     print("======================================")
 
-    try:
-        started_at = time.perf_counter()
+    response = deliver_webhook(delivery)
 
-        response = requests.post(
-            receiver_url,
-            json=payload,
-            headers=headers,
-            timeout=10,
-        )
+    print()
+    print("======================================")
+    print("         WEBHOOK RESPONSE")
+    print("======================================")
 
-        duration = time.perf_counter() - started_at
+    print("Attempt:")
+    print(delivery.attempt_number)
 
-        delivery.response_status = response.status_code
-        delivery.response_body = response.text
-        delivery.completed_at = timezone.now()
-        delivery.duration_ms = duration * 1000
+    print()
+    print("Status:")
+    print(delivery.status)
 
-        delivery.success = (
-            200 <= response.status_code < 300
-        )
-
-        delivery.save()
-
+    if response is None:
         print()
+        print("Error:")
+        print(delivery.error_message)
         print("======================================")
-        print("         WEBHOOK RESPONSE")
-        print("======================================")
-
-        print("Status:")
-        print(response.status_code)
-
-        print()
-        print("Duration:")
-        print(f"{duration * 1000:.2f} ms")
-
-        print()
-        print("Body:")
-        print(response.text)
-
-        print("======================================")
-
-        return JsonResponse(
-            {
-                "success": delivery.success,
-                "event_id": str(event.event_id),
-                "delivery_id": delivery.id,
-                "receiver_status": response.status_code,
-                "receiver_response": response.json(),
-            }
-        )
-
-    except requests.RequestException as exc:
-        delivery.completed_at = timezone.now()
-        delivery.error_message = str(exc)
-        delivery.success = False
-        delivery.save()
 
         return JsonResponse(
             {
                 "success": False,
                 "event_id": str(event.event_id),
                 "delivery_id": delivery.id,
-                "error": str(exc),
+                "attempt_number": delivery.attempt_number,
+                "error": delivery.error_message,
             },
             status=502,
         )
+
+    print()
+    print("HTTP:")
+    print(response.status_code)
+
+    print()
+    print("Duration:")
+    print(f"{delivery.duration_ms:.2f} ms")
+
+    print()
+    print("Body:")
+    print(response.text)
+
+    print("======================================")
+
+    try:
+        receiver_response = response.json()
+    except ValueError:
+        receiver_response = response.text
+
+    return JsonResponse(
+        {
+            "success": delivery.success,
+            "event_id": str(event.event_id),
+            "delivery_id": delivery.id,
+            "attempt_number": delivery.attempt_number,
+            "receiver_status": response.status_code,
+            "receiver_response": receiver_response,
+        }
+    )
