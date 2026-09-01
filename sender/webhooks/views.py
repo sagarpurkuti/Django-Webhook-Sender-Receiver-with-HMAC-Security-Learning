@@ -1,6 +1,10 @@
+import json
+import time
+
 from django.http import JsonResponse
 
 from .models import WebhookDelivery, WebhookEvent
+from .security import generate_signature
 from .services import deliver_webhook
 
 
@@ -30,6 +34,21 @@ def send_webhook(request):
         "data": event.payload,
     }
 
+    raw_body = json.dumps(
+        payload,
+        separators=(",", ":"),
+    ).encode()
+
+    timestamp = str(
+        int(time.time())
+    )
+
+    signature = generate_signature(
+        timestamp=timestamp,
+        event_id=str(event.event_id),
+        raw_body=raw_body,
+    )
+
     receiver_url = (
         "http://127.0.0.1:8001/webhooks/events/"
     )
@@ -39,6 +58,8 @@ def send_webhook(request):
         "X-Webhook-ID": str(event.event_id),
         "X-Webhook-Event": event.event_type,
         "X-Webhook-Version": "v1",
+        "X-Webhook-Timestamp": timestamp,
+        "X-Webhook-Signature": signature,
     }
 
     delivery = WebhookDelivery.objects.create(
@@ -74,7 +95,24 @@ def send_webhook(request):
 
     print("======================================")
 
-    response = deliver_webhook(delivery)
+    print()
+    print("======================================")
+    print("         WEBHOOK SIGNATURE")
+    print("======================================")
+    print("Timestamp:")
+    print(timestamp)
+
+    print()
+    print("Event ID:")
+    print(event.event_id)
+
+    print()
+    print("Signature:")
+    print(signature)
+
+    print("======================================")
+
+    response = deliver_webhook(delivery, raw_body)
 
     print()
     print("======================================")

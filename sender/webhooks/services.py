@@ -1,3 +1,4 @@
+import json
 import time
 
 import requests
@@ -27,7 +28,7 @@ def calculate_retry_delay(attempt_number):
     return 2 ** attempt_number
 
 
-def deliver_webhook(delivery):
+def deliver_webhook(delivery, raw_body):
     delivery.status = "sending"
     delivery.sent_at = timezone.now()
     delivery.save(
@@ -42,7 +43,7 @@ def deliver_webhook(delivery):
     try:
         response = requests.post(
             delivery.destination_url,
-            json=delivery.payload,
+            data=raw_body,
             headers=delivery.request_headers,
             timeout=10,
         )
@@ -89,6 +90,11 @@ def retry_delivery(delivery):
         attempt_number=delivery.attempt_number + 1,
     )
 
-    deliver_webhook(new_delivery)
+    raw_body = json.dumps(
+        delivery.payload,
+        separators=(",", ":"),
+    ).encode()
+
+    deliver_webhook(new_delivery, raw_body)
 
     return new_delivery

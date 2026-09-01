@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import WebhookEvent
+from .security import is_timestamp_valid, verify_signature
 
 
 SUPPORTED_EVENT_TYPES = {
@@ -86,7 +87,106 @@ def receive_webhook(request):
         )
 
     # -------------------------------------------------
-    # 3. Parse JSON
+    # 3. Require signature headers
+    # -------------------------------------------------
+
+    timestamp = request.headers.get(
+        "X-Webhook-Timestamp"
+    )
+
+    received_signature = request.headers.get(
+        "X-Webhook-Signature"
+    )
+
+    header_event_id = request.headers.get(
+        "X-Webhook-ID"
+    )
+
+    if not timestamp:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": {
+                    "code": "missing_timestamp",
+                    "message": "Missing X-Webhook-Timestamp header.",
+                },
+            },
+            status=401,
+        )
+
+    if not received_signature:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": {
+                    "code": "missing_signature",
+                    "message": "Missing X-Webhook-Signature header.",
+                },
+            },
+            status=401,
+        )
+
+    if not header_event_id:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": {
+                    "code": "missing_event_id",
+                    "message": "Missing X-Webhook-ID header.",
+                },
+            },
+            status=401,
+        )
+
+    # -------------------------------------------------
+    # 4. Validate timestamp freshness
+    # -------------------------------------------------
+
+    if not is_timestamp_valid(timestamp):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": {
+                    "code": "invalid_timestamp",
+                    "message": "Webhook timestamp is too old or invalid.",
+                },
+            },
+            status=401,
+        )
+
+    # -------------------------------------------------
+    # 5. Verify HMAC signature
+    # -------------------------------------------------
+
+    valid_signature = verify_signature(
+        timestamp=timestamp,
+        event_id=header_event_id,
+        raw_body=request.body,
+        received_signature=received_signature,
+    )
+
+    if not valid_signature:
+        print()
+        print("Signature verification:")
+        print("FAILED")
+
+        return JsonResponse(
+            {
+                "success": False,
+                "error": {
+                    "code": "invalid_signature",
+                    "message": "Webhook signature verification failed.",
+                },
+            },
+            status=401,
+        )
+
+    print()
+    print("Signature verification:")
+    print("PASSED")
+
+    # -------------------------------------------------
+    # 6. Parse JSON
     # -------------------------------------------------
 
     try:
@@ -104,7 +204,7 @@ def receive_webhook(request):
         )
 
     # -------------------------------------------------
-    # 4. Validate payload is an object
+    # 7. Validate payload is an object
     # -------------------------------------------------
 
     if not isinstance(payload, dict):
@@ -120,7 +220,7 @@ def receive_webhook(request):
         )
 
     # -------------------------------------------------
-    # 5. Extract fields
+    # 8. Extract fields
     # -------------------------------------------------
 
     event_id = payload.get("id")
@@ -131,7 +231,7 @@ def receive_webhook(request):
     data = payload.get("data")
 
     # -------------------------------------------------
-    # 6. Required fields
+    # 9. Required fields
     # -------------------------------------------------
 
     required_fields = {
@@ -163,7 +263,7 @@ def receive_webhook(request):
         )
 
     # -------------------------------------------------
-    # 7. Validate UUID
+    # 10. Validate UUID
     # -------------------------------------------------
 
     try:
@@ -181,7 +281,7 @@ def receive_webhook(request):
         )
 
     # -------------------------------------------------
-    # 8. Validate event type
+    # 11. Validate event type
     # -------------------------------------------------
 
     if event_type not in SUPPORTED_EVENT_TYPES:
@@ -197,7 +297,7 @@ def receive_webhook(request):
         )
 
     # -------------------------------------------------
-    # 9. Validate version
+    # 12. Validate version
     # -------------------------------------------------
 
     if version not in SUPPORTED_VERSIONS:
@@ -213,7 +313,7 @@ def receive_webhook(request):
         )
 
     # -------------------------------------------------
-    # 10. Validate source
+    # 13. Validate source
     # -------------------------------------------------
 
     if source != EXPECTED_SOURCE:
@@ -229,7 +329,7 @@ def receive_webhook(request):
         )
 
     # -------------------------------------------------
-    # 11. Validate data
+    # 14. Validate data
     # -------------------------------------------------
 
     if not isinstance(data, dict):
@@ -245,12 +345,8 @@ def receive_webhook(request):
         )
 
     # -------------------------------------------------
-    # 12. Validate headers
+    # 15. Validate header / payload consistency
     # -------------------------------------------------
-
-    header_event_id = request.headers.get(
-        "X-Webhook-ID"
-    )
 
     header_event_type = request.headers.get(
         "X-Webhook-Event"
@@ -301,7 +397,7 @@ def receive_webhook(request):
     print("PASSED")
 
     # -------------------------------------------------
-    # 13. Idempotency check
+    # 16. Idempotency check
     # -------------------------------------------------
 
     existing_event = WebhookEvent.objects.filter(
@@ -327,7 +423,7 @@ def receive_webhook(request):
         )
 
     # -------------------------------------------------
-    # 14. Save event
+    # 17. Save event
     # -------------------------------------------------
 
     try:
@@ -361,7 +457,7 @@ def receive_webhook(request):
     print(event.id)
 
     # -------------------------------------------------
-    # 15. Process event
+    # 18. Process event
     # -------------------------------------------------
 
     print()
